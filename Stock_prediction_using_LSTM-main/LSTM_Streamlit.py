@@ -4,129 +4,87 @@ import pandas as pd
 import yfinance as yf
 import ta
 from sklearn.preprocessing import MinMaxScaler
-import tensorflow as tf
 from tensorflow.keras.models import load_model
-from tensorflow.keras.losses import MeanSquaredError
 import matplotlib.pyplot as plt
-import io
-import os
 
-# Step 1: Load the Stock Data
+# Load stock data
 def load_stock_data(ticker, start_date, end_date):
     data = yf.download(ticker, start=start_date, end=end_date)
-    
-    # Inspect and display the column names and a preview of the data for debugging
+
     st.write("Columns in the data:", data.columns)
     st.write("First few rows of the data:", data.head())
 
-    # Check for the adjusted close column, or fall back to 'Close' if it's missing
     if 'Adj Close' in data.columns:
-        st.write("Using 'Adj Close' for calculations.")
         close_column = 'Adj Close'
     elif 'Close' in data.columns:
-        st.write("Using 'Close' for calculations.")
         close_column = 'Close'
     else:
-        st.error(f"Neither 'Adj Close' nor 'Close' found in the data for {ticker}.")
-        return pd.DataFrame()  # Return empty dataframe if neither column is found
-    
-    # Calculate returns and other indicators
+        st.error("Missing 'Adj Close' or 'Close' column.")
+        return pd.DataFrame()
+
     data['Return'] = data[close_column].pct_change()
-    data['RSI'] = ta.momentum.RSIIndicator(data[close_column].squeeze()).rsi()
-    data['EMA'] = ta.trend.EMAIndicator(data[close_column].squeeze()).ema_indicator()
+    data['RSI'] = ta.momentum.RSIIndicator(data[close_column]).rsi()
+    data['EMA'] = ta.trend.EMAIndicator(data[close_column]).ema_indicator()
+    data['Adj Close'] = data[close_column]  # Ensure consistency
     data.dropna(inplace=True)
-    
     return data
 
-# Step 2: Prepare the Dataset
+# Prepare data
 def prepare_data(data, lookback=14):
-    # Ensure 'Adj Close' is included as a feature
-    features = ['Adj Close', 'Volume', 'RSI', 'EMA']  # Make sure 'Adj Close' is included as the first feature
+    features = ['Adj Close', 'Volume', 'RSI', 'EMA']
+    features = [f for f in features if f in data.columns]
     
-    available_features = [col for col in features if col in data.columns]
-    if len(available_features) == 0:
-        st.error("None of the required columns are available in the data.")
-        return None, None, None, None, None, None
-    
-    st.write("Using the following features for training:", available_features)
-    
-    # Scale data using MinMaxScaler
     scaler = MinMaxScaler()
-    scaled_data = scaler.fit_transform(data[available_features])
+    scaled_data = scaler.fit_transform(data[features])
 
-    # Function to create sequences for LSTM
     def create_sequences(data, lookback):
         X, y = [], []
         for i in range(lookback, len(data)):
-            X.append(data[i-lookback:i])  # Select time_steps (lookback period)
-            y.append(data[i, 0])  # Target is the first column: 'Adj Close' (price)
+            X.append(data[i-lookback:i])
+            y.append(data[i, 0])
         return np.array(X), np.array(y)
 
     X, y = create_sequences(scaled_data, lookback)
-    
-    # Split data into training and testing sets
-    train_size = int(0.8 * len(X))
-    X_train, X_test = X[:train_size], X[train_size:]
-    y_train, y_test = y[:train_size], y[train_size:]
-    
-    return X_train, X_test, y_train, y_test, scaler, available_features
-    
-# Step 3: Model Loading and Prediction
+    split = int(0.8 * len(X))
+    return X[:split], X[split:], y[:split], y[split:], scaler, features
 
-def load_and_predict(model_file, X_test, scaler, features):
-    # File uploader for LSTM model
-    model_file = st.file_uploader("Upload your LSTM model", type=["h5"])
-
-if model_file is not None:
-    # Load and make predictions with the model
-    y_pred_rescaled = load_and_predict(model_file, X_test, scaler, features)
-    
-    # Make predictions
+# Predict using uploaded model
+def predict_with_model(model_file, X_test, scaler, features):
+    model = load_model(model_file)
     y_pred = model.predict(X_test)
+    dummy_features = np.zeros((len(y_pred), len(features) - 1))
+    rescaled = scaler.inverse_transform(np.concatenate([y_pred, dummy_features], axis=1))
+    return rescaled[:, 0]
 
-    # Rescale predictions
-    def rescale(data, predictions):
-        dummy_features = np.zeros((len(predictions), len(features) - 1))
-        rescaled = scaler.inverse_transform(np.concatenate([predictions, dummy_features], axis=1))
-        return rescaled[:, 0]
-    
-    y_pred_rescaled = rescale(data[features], y_pred)
-    
-    return y_pred_rescaled
-
-
-
-
-# Step 4: Streamlit Web App
+# Streamlit UI
 st.title("Stock Price Prediction with LSTM")
-st.markdown("This app uses an LSTM model to predict stock prices based on historical data.")
-
-# User Input for Stock
 stock_symbol = st.text_input("Enter Stock Ticker", "AAPL")
 start_date = st.date_input("Start Date", pd.to_datetime("2015-01-01"))
 end_date = st.date_input("End Date", pd.to_datetime("2023-12-31"))
+model_file = st.file_uploader("Upload your LSTM model (.h5)", type=["h5"])
 
-# Load data and prepare for prediction
-data = load_stock_data(stock_symbol, start_date, end_date)
+if stock_symbol:
+    data = load_stock_data(stock_symbol, start_date, end_date)
+    if data.empty:
+        st.stop()
 
-# If no data is found, stop further execution
-if data.empty:
-    st.stop()
+    X_train, X_test, y_train, y_test, scaler, features = prepare_data(data)
 
-X_train, X_test, y_train, y_test, scaler, features = prepare_data(data)
-    
-    # Plot True vs Predicted Prices
-    plt.figure(figsize=(12, 6))
-    plt.plot(y_test, label="True Prices", alpha=0.7)
-    plt.plot(y_pred_rescaled, label="Predicted Prices", alpha=0.7)
-    plt.title(f"True vs Predicted Prices for {stock_symbol}")
-    plt.xlabel("Time Steps")
-    plt.ylabel("Price")
-    plt.legend()
-    st.pyplot(plt)
+    if model_file:
+        y_pred_rescaled = predict_with_model(model_file, X_test, scaler, features)
 
-    # Show Prediction Results
-    st.write(f"Predicted Prices for {stock_symbol} (Last 5 predictions):")
-    st.write(y_pred_rescaled[:5])
-else:
-    st.write("Please upload a model file to proceed.")
+        # Plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(y_test, label="True Prices", alpha=0.7)
+        plt.plot(y_pred_rescaled, label="Predicted Prices", alpha=0.7)
+        plt.title(f"True vs Predicted Prices for {stock_symbol}")
+        plt.xlabel("Time Steps")
+        plt.ylabel("Price")
+        plt.legend()
+        st.pyplot(plt)
+
+        # Show last 5 predictions
+        st.subheader("Last 5 Predicted Prices:")
+        st.write(y_pred_rescaled[-5:])
+    else:
+        st.info("Please upload a model to start prediction.")
