@@ -12,14 +12,16 @@ import matplotlib.pyplot as plt
 # Step 1: Load the Stock Data
 def load_stock_data(stock_symbol, start, end):
     data = yf.download(stock_symbol, start=start, end=end)
-    
+
     if data.empty:
         st.error("No data found. Please check the stock symbol or date range.")
         return None
-    if 'Adj Close' not in data.columns:
-        st.error("Downloaded data does not contain 'Adj Close'.")
-        return None
-    data['Return'] = data['Adj Close'].pct_change()
+
+    # ✅ Use 'Adj Close' if available, else fallback to 'Close'
+    price_col = 'Adj Close' if 'Adj Close' in data.columns else 'Close'
+    st.write("Using price column:", price_col)  # Optional: show which one is used
+
+    data['Return'] = data[price_col].pct_change()
     data['Volatility'] = data['Return'].rolling(window=30).std()
     data.dropna(inplace=True)
     return data
