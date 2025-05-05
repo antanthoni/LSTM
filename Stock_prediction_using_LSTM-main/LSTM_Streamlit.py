@@ -74,7 +74,7 @@ start_date = st.date_input("Start Date", pd.to_datetime("2015-01-01"))
 end_date = st.date_input("End Date", pd.to_datetime("2023-12-31"))
 
 # Load data and prepare for prediction
-data = load_stock_data(stock_symbol, start, end)
+data = load_stock_data(stock_symbol, start_date, end_date)
 
 if data is None:
     st.stop()
