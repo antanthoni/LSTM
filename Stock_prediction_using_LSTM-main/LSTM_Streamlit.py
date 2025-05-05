@@ -6,8 +6,10 @@ import ta
 from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from tensorflow.keras.models import load_model
+from tensorflow.keras.losses import MeanSquaredError
 import matplotlib.pyplot as plt
-import tempfile
+import io
+import os
 
 # Step 1: Load the Stock Data
 def load_stock_data(ticker, start_date, end_date):
@@ -69,33 +71,8 @@ def prepare_data(data, lookback=14):
     
     return X_train, X_test, y_train, y_test, scaler, available_features
 
-# Step 3: Update Load and Predict with Temp File Handling
-def load_and_predict(model_file, X_test, scaler, features):
-    # Create a temporary file to save the uploaded model
-    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-        # Write the contents of the uploaded model to the temporary file
-        temp_file.write(model_file.read())
-        temp_file_path = temp_file.name  # Get the path to the temporary file
-    
-    try:
-        # Load the LSTM model from the temporary file (no custom objects)
-        model = load_model(temp_file_path)
-    except Exception as e:
-        st.error(f"Error loading the model: {e}")
-        return None
 
-    # Make predictions
-    y_pred = model.predict(X_test)
 
-    # Rescale predictions back to original scale
-    def rescale_predictions(y_pred, scaler, features):
-        if y_pred.ndim == 1:
-            y_pred = y_pred.reshape(-1, 1)  # Ensure y_pred is a 2D array
-        dummy = np.zeros((len(y_pred), len(features) - 1))  # Add dummy features to match original shape
-        padded = np.concatenate([y_pred, dummy], axis=1)
-        return scaler.inverse_transform(padded)[:, 0]  # Only return the first column (price)
-
-    return rescale_predictions(y_pred, scaler, features)
 
 # Step 4: Streamlit Web App
 st.title("Stock Price Prediction with LSTM")
@@ -123,18 +100,17 @@ if model_file is not None:
     y_pred_rescaled = load_and_predict(model_file, X_test, scaler, features)
     
     # Plot True vs Predicted Prices
-    if y_pred_rescaled is not None:
-        plt.figure(figsize=(12, 6))
-        plt.plot(y_test, label="True Prices", alpha=0.7)
-        plt.plot(y_pred_rescaled, label="Predicted Prices", alpha=0.7)
-        plt.title(f"True vs Predicted Prices for {stock_symbol}")
-        plt.xlabel("Time Steps")
-        plt.ylabel("Price")
-        plt.legend()
-        st.pyplot(plt)
+    plt.figure(figsize=(12, 6))
+    plt.plot(y_test, label="True Prices", alpha=0.7)
+    plt.plot(y_pred_rescaled, label="Predicted Prices", alpha=0.7)
+    plt.title(f"True vs Predicted Prices for {stock_symbol}")
+    plt.xlabel("Time Steps")
+    plt.ylabel("Price")
+    plt.legend()
+    st.pyplot(plt)
 
-        # Show Prediction Results
-        st.write(f"Predicted Prices for {stock_symbol} (Last 5 predictions):")
-        st.write(y_pred_rescaled[:5])
+    # Show Prediction Results
+    st.write(f"Predicted Prices for {stock_symbol} (Last 5 predictions):")
+    st.write(y_pred_rescaled[:5])
 else:
     st.write("Please upload a model file to proceed.")
