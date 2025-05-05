@@ -10,7 +10,7 @@ from tensorflow.keras.losses import MeanSquaredError
 import matplotlib.pyplot as plt
 
 # Step 1: Load the Stock Data
-def load_stock_data(stock_symbol, start_date, end_date):
+def load_stock_data(stock_symbol, start, end):
     data = yf.download(stock_symbol, start=start, end=end)
     
     if data.empty:
@@ -74,7 +74,7 @@ start_date = st.date_input("Start Date", pd.to_datetime("2015-01-01"))
 end_date = st.date_input("End Date", pd.to_datetime("2023-12-31"))
 
 # Load data and prepare for prediction
-data = load_stock_data(stock_symbol, start_date, end_date)
+data = load_stock_data(stock_symbol, start, end)
 
 if data is None:
     st.stop()
