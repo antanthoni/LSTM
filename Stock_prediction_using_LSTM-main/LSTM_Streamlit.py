@@ -6,7 +6,6 @@ import ta
 from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-from tensorflow.keras.losses import MeanSquaredError
 import matplotlib.pyplot as plt
 import io
 import os
@@ -15,7 +14,6 @@ import os
 def load_stock_data(ticker, start_date, end_date):
     data = yf.download(ticker, start=start_date, end=end_date)
     
-    # Inspect and display the column names and a preview of the data for debugging
     st.write("Columns in the data:", data.columns)
     st.write("First few rows of the data:", data.head())
 
@@ -40,8 +38,7 @@ def load_stock_data(ticker, start_date, end_date):
 
 # Step 2: Prepare the Dataset
 def prepare_data(data, lookback=14):
-    # Ensure 'Adj Close' is included as a feature
-    features = ['Adj Close', 'Volume', 'RSI', 'EMA']  # Make sure 'Adj Close' is included as the first feature
+    features = ['Adj Close', 'Volume', 'RSI', 'EMA']
     
     available_features = [col for col in features if col in data.columns]
     if len(available_features) == 0:
@@ -54,7 +51,6 @@ def prepare_data(data, lookback=14):
     scaler = MinMaxScaler()
     scaled_data = scaler.fit_transform(data[available_features])
 
-    # Function to create sequences for LSTM
     def create_sequences(data, lookback):
         X, y = [], []
         for i in range(lookback, len(data)):
@@ -71,8 +67,22 @@ def prepare_data(data, lookback=14):
     
     return X_train, X_test, y_train, y_test, scaler, available_features
 
+# Function to load the model and make predictions
+def load_and_predict(model_file, X_test, scaler, features):
+    try:
+        # Load the model from the uploaded file
+        model = load_model(model_file)
 
+        # Predict using the LSTM model
+        y_pred_scaled = model.predict(X_test)
 
+        # Rescale the predicted values back to the original scale
+        y_pred_rescaled = scaler.inverse_transform(np.concatenate((y_pred_scaled, np.zeros((y_pred_scaled.shape[0], len(features) - 1))), axis=1))[:, 0]
+
+        return y_pred_rescaled
+    except Exception as e:
+        st.error(f"Error loading or predicting with the model: {e}")
+        return None
 
 # Step 4: Streamlit Web App
 st.title("Stock Price Prediction with LSTM")
