@@ -10,11 +10,17 @@ from tensorflow.keras.losses import MeanSquaredError
 import matplotlib.pyplot as plt
 
 # Step 1: Load the Stock Data
-def load_stock_data(ticker, start_date, end_date):
-    data = yf.download(ticker, start=start_date, end=end_date)
+def load_stock_data(stock_symbol, start_date, end_date):
+    data = yf.download(stock_symbol, start=start, end=end)
+    
+    if data.empty:
+        st.error("No data found. Please check the stock symbol or date range.")
+        return None
+    if 'Adj Close' not in data.columns:
+        st.error("Downloaded data does not contain 'Adj Close'.")
+        return None
     data['Return'] = data['Adj Close'].pct_change()
-    data['RSI'] = ta.momentum.RSIIndicator(data['Adj Close'].squeeze()).rsi()
-    data['EMA'] = ta.trend.EMAIndicator(data['Adj Close'].squeeze()).ema_indicator()
+    data['Volatility'] = data['Return'].rolling(window=30).std()
     data.dropna(inplace=True)
     return data
 
@@ -69,6 +75,10 @@ end_date = st.date_input("End Date", pd.to_datetime("2023-12-31"))
 
 # Load data and prepare for prediction
 data = load_stock_data(stock_symbol, start_date, end_date)
+
+if data is None:
+    st.stop()
+    
 X_train, X_test, y_train, y_test, scaler, features = prepare_data(data)
 
 # Load the model and make predictions
