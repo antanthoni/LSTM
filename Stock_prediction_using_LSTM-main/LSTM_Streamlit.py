@@ -8,7 +8,7 @@ import tensorflow as tf
 from tensorflow.keras.models import load_model
 from tensorflow.keras.losses import MeanSquaredError
 import matplotlib.pyplot as plt
-import io
+import tempfile
 
 # Step 1: Load the Stock Data
 def load_stock_data(ticker, start_date, end_date):
@@ -70,10 +70,16 @@ def prepare_data(data, lookback=14):
     
     return X_train, X_test, y_train, y_test, scaler, available_features
 
-# Step 3: Load and Predict using the uploaded LSTM model
+# Step 3: Update Load and Predict with Temp File Handling
 def load_and_predict(model_file, X_test, scaler, features):
-    # Load the LSTM model
-    model = load_model(model_file, custom_objects={'MeanSquaredError': MeanSquaredError})
+    # Create a temporary file to save the uploaded model
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        # Write the contents of the uploaded model to the temporary file
+        temp_file.write(model_file.read())
+        temp_file_path = temp_file.name  # Get the path to the temporary file
+    
+    # Load the LSTM model from the temporary file
+    model = load_model(temp_file_path, custom_objects={'MeanSquaredError': MeanSquaredError})
     
     # Make predictions
     y_pred = model.predict(X_test)
@@ -87,7 +93,6 @@ def load_and_predict(model_file, X_test, scaler, features):
         return scaler.inverse_transform(padded)[:, 0]  # Only return the first column (price)
 
     return rescale_predictions(y_pred, scaler, features)
-
 
 # Step 4: Streamlit Web App
 st.title("Stock Price Prediction with LSTM")
