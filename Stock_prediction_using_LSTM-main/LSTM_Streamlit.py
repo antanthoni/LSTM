@@ -9,7 +9,6 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.losses import MeanSquaredError
 import matplotlib.pyplot as plt
 import io
-import os
 
 # Step 1: Load the Stock Data
 def load_stock_data(ticker, start_date, end_date):
@@ -71,7 +70,23 @@ def prepare_data(data, lookback=14):
     
     return X_train, X_test, y_train, y_test, scaler, available_features
 
+# Step 3: Load and Predict using the uploaded LSTM model
+def load_and_predict(model_file, X_test, scaler, features):
+    # Load the LSTM model
+    model = load_model(model_file, custom_objects={'MeanSquaredError': MeanSquaredError})
+    
+    # Make predictions
+    y_pred = model.predict(X_test)
 
+    # Rescale predictions back to original scale
+    def rescale_predictions(y_pred, scaler, features):
+        if y_pred.ndim == 1:
+            y_pred = y_pred.reshape(-1, 1)  # Ensure y_pred is a 2D array
+        dummy = np.zeros((len(y_pred), len(features) - 1))  # Add dummy features to match original shape
+        padded = np.concatenate([y_pred, dummy], axis=1)
+        return scaler.inverse_transform(padded)[:, 0]  # Only return the first column (price)
+
+    return rescale_predictions(y_pred, scaler, features)
 
 
 # Step 4: Streamlit Web App
