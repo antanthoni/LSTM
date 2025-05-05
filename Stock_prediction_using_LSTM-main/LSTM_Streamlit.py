@@ -10,22 +10,21 @@ from tensorflow.keras.losses import MeanSquaredError
 import matplotlib.pyplot as plt
 
 # Step 1: Load the Stock Data
-def load_stock_data(stock_symbol, start, end):
-    data = yf.download(stock_symbol, start=start, end=end)
+def load_stock_data(ticker, start_date, end_date):
+    data = yf.download(ticker, start=start_date, end=end_date)
 
     if data.empty:
         st.error("No data found. Please check the stock symbol or date range.")
         return None
 
-    # ✅ Use 'Adj Close' if available, else fallback to 'Close'
+    # Use 'Adj Close' if available, else fallback to 'Close'
     price_col = 'Adj Close' if 'Adj Close' in data.columns else 'Close'
-    st.write("Using price column:", price_col)
-
     data['Price'] = data[price_col]
+
+    # Add technical indicators
     data['Return'] = data['Price'].pct_change()
-    data['Volatility'] = data['Return'].rolling(window=30).std()
-    data['RSI'] = ta.momentum.RSIIndicator(close=data['Price']).rsi()
-    data['EMA'] = ta.trend.EMAIndicator(close=data['Price'], window=14).ema_indicator()
+    data['RSI'] = ta.momentum.RSIIndicator(data['Price'].squeeze()).rsi()
+    data['EMA'] = ta.trend.EMAIndicator(data['Price'].squeeze()).ema_indicator()
     data.dropna(inplace=True)
     return data
 
@@ -39,16 +38,16 @@ def prepare_data(data, lookback=14):
         X, y = [], []
         for i in range(lookback, len(data)):
             X.append(data[i-lookback:i])
-            y.append(data[i, 0])  # Target is 'Price'
+            y.append(data[i, 0])  # Target is the first column: 'Price'
         return np.array(X), np.array(y)
 
     X, y = create_sequences(scaled_data, lookback)
-
+    
     # Split data into training and testing
     train_size = int(0.8 * len(X))
     X_train, X_test = X[:train_size], X[train_size:]
     y_train, y_test = y[:train_size], y[train_size:]
-
+    
     return X_train, X_test, y_train, y_test, scaler, features
 
 # Step 3: Model Loading and Prediction
@@ -56,36 +55,34 @@ def load_and_predict(model_file, X_test, scaler, features):
     model = load_model(model_file, custom_objects={'mse': MeanSquaredError()})
     y_pred = model.predict(X_test)
 
-    if y_pred.ndim == 1:
-        y_pred = y_pred.reshape(-1, 1)
+    def rescale_predictions(y_pred, scaler, features):
+        if y_pred.ndim == 1:
+            y_pred = y_pred.reshape(-1, 1)
+        dummy = np.zeros((len(y_pred), len(features) - 1))
+        padded = np.concatenate([y_pred, dummy], axis=1)
+        return scaler.inverse_transform(padded)[:, 0]
 
-    # Pad with dummy zeros to match scaler input shape
-    dummy = np.zeros((len(y_pred), len(features) - 1))
-    padded = np.concatenate([y_pred, dummy], axis=1)
-    y_pred_rescaled = scaler.inverse_transform(padded)[:, 0]
-
-    return y_pred_rescaled
+    return rescale_predictions(y_pred, scaler, features), y_pred
 
 # Step 4: Streamlit Web App
-st.title("Stock Price Prediction with LSTM")
-st.markdown("This app uses an LSTM model to predict stock prices based on historical data.")
+st.title("📈 Stock Price Prediction with LSTM")
+st.markdown("This app uses an LSTM model to predict stock prices based on historical data and technical indicators like RSI and EMA.")
 
 # User Input for Stock
 stock_symbol = st.text_input("Enter Stock Ticker", "AAPL")
 start_date = st.date_input("Start Date", pd.to_datetime("2015-01-01"))
 end_date = st.date_input("End Date", pd.to_datetime("2023-12-31"))
 
-# Load data and prepare for prediction
+# Load and prepare data
 data = load_stock_data(stock_symbol, start_date, end_date)
-
 if data is None:
     st.stop()
 
 X_train, X_test, y_train, y_test, scaler, features = prepare_data(data)
 
-# Load the model and make predictions
-model_path = '/Users/manojkumarbollineni/Desktop/LSTM/lstm_stock_model.h5'  # <-- Adjust if needed
-y_pred_rescaled = load_and_predict(model_path, X_test, scaler, features)
+# Load model and predict
+model_path = '/Users/manojkumarbollineni/Desktop/LSTM/lstm_stock_model.h5'
+y_pred_rescaled, _ = load_and_predict(model_path, X_test, scaler, features)
 
 # Plot True vs Predicted Prices
 plt.figure(figsize=(12, 6))
@@ -98,5 +95,5 @@ plt.legend()
 st.pyplot(plt)
 
 # Show Prediction Results
-st.write(f"Predicted Prices for {stock_symbol} (First 5 predictions):")
-st.write(y_pred_rescaled[:5])
+st.subheader("📊 Predicted Prices (Last 5 values):")
+st.write(y_pred_rescaled[-5:])
