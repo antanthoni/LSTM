@@ -6,7 +6,6 @@ import ta
 from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-from tensorflow.keras.losses import MeanSquaredError
 import matplotlib.pyplot as plt
 import tempfile
 
@@ -78,9 +77,13 @@ def load_and_predict(model_file, X_test, scaler, features):
         temp_file.write(model_file.read())
         temp_file_path = temp_file.name  # Get the path to the temporary file
     
-    # Load the LSTM model from the temporary file
-    model = load_model(temp_file_path, custom_objects={'MeanSquaredError': MeanSquaredError})
-    
+    try:
+        # Load the LSTM model from the temporary file (no custom objects)
+        model = load_model(temp_file_path)
+    except Exception as e:
+        st.error(f"Error loading the model: {e}")
+        return None
+
     # Make predictions
     y_pred = model.predict(X_test)
 
@@ -120,17 +123,18 @@ if model_file is not None:
     y_pred_rescaled = load_and_predict(model_file, X_test, scaler, features)
     
     # Plot True vs Predicted Prices
-    plt.figure(figsize=(12, 6))
-    plt.plot(y_test, label="True Prices", alpha=0.7)
-    plt.plot(y_pred_rescaled, label="Predicted Prices", alpha=0.7)
-    plt.title(f"True vs Predicted Prices for {stock_symbol}")
-    plt.xlabel("Time Steps")
-    plt.ylabel("Price")
-    plt.legend()
-    st.pyplot(plt)
+    if y_pred_rescaled is not None:
+        plt.figure(figsize=(12, 6))
+        plt.plot(y_test, label="True Prices", alpha=0.7)
+        plt.plot(y_pred_rescaled, label="Predicted Prices", alpha=0.7)
+        plt.title(f"True vs Predicted Prices for {stock_symbol}")
+        plt.xlabel("Time Steps")
+        plt.ylabel("Price")
+        plt.legend()
+        st.pyplot(plt)
 
-    # Show Prediction Results
-    st.write(f"Predicted Prices for {stock_symbol} (Last 5 predictions):")
-    st.write(y_pred_rescaled[:5])
+        # Show Prediction Results
+        st.write(f"Predicted Prices for {stock_symbol} (Last 5 predictions):")
+        st.write(y_pred_rescaled[:5])
 else:
     st.write("Please upload a model file to proceed.")
